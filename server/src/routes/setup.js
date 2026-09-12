@@ -15,7 +15,7 @@ router.post("/create-first-admin", async (req, res) => {
   const existing = await query("SELECT COUNT(*)::int AS count FROM users");
   if (existing.rows[0].count > 0) {
     return res.status(403).json({
-      error: "تم إعداد النظام مسبقًا. لإضافة مستخدم جديد، استخدم لوحة إدارة المستخدمين بعد تسجيل الدخول.",
+      error: "تم إعداد النظام مسبقًا. لإضافة مستخدم جديد، استخدم لوحة إدارة المستخدمين بعد تسجيل الدخول كمدير١.",
     });
   }
 
@@ -28,8 +28,8 @@ router.post("/create-first-admin", async (req, res) => {
 
   const password_hash = await bcrypt.hash(password, 10);
   const result = await query(
-    `INSERT INTO users (username, password_hash, full_name, role, status, can_discount, can_delete_customer, can_edit_product_price)
-     VALUES ($1, $2, $3, 'admin', 'active', true, true, true)
+    `INSERT INTO users (username, password_hash, full_name, role, status, can_discount, can_delete_customer, can_edit_product_price, can_cancel_order)
+     VALUES ($1, $2, $3, 'super_admin', 'active', true, true, true, true)
      RETURNING id, username, full_name, role`,
     [username.trim(), password_hash, full_name.trim()]
   );
@@ -43,7 +43,7 @@ router.post("/create-first-admin", async (req, res) => {
     newValue: { username: newAdmin.username },
   });
 
-  res.status(201).json({ message: "تم إنشاء حساب المدير الأول بنجاح.", user: newAdmin });
+  res.status(201).json({ message: "تم إنشاء حساب مدير١ بنجاح.", user: newAdmin });
 });
 
 export default router;
