@@ -4,33 +4,33 @@ import { query, logActivity } from "../db.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
 const router = Router();
-router.use(requireAuth, requireRole("admin"));
+router.use(requireAuth, requireRole("super_admin"));
 
 router.get("/", async (req, res) => {
   const result = await query(
-    `SELECT id, username, full_name, role, status, can_discount, can_delete_customer, can_edit_product_price, created_at
+    `SELECT id, username, full_name, role, status, can_discount, can_delete_customer, can_edit_product_price, can_cancel_order, created_at
      FROM users ORDER BY created_at ASC`
   );
   res.json(result.rows);
 });
 
 router.post("/", async (req, res) => {
-  const { username, password, full_name, role, can_discount, can_delete_customer, can_edit_product_price } = req.body;
+  const { username, password, full_name, role, can_discount, can_delete_customer, can_edit_product_price, can_cancel_order } = req.body;
 
   if (!username || !password || !full_name || !role) {
     return res.status(400).json({ error: "الرجاء تعبئة كل الحقول المطلوبة." });
   }
-  if (!["admin", "driver"].includes(role)) {
-    return res.status(400).json({ error: "الدور يجب أن يكون admin أو driver." });
+  if (!["super_admin", "admin", "driver"].includes(role)) {
+    return res.status(400).json({ error: "الدور يجب أن يكون super_admin أو admin أو driver." });
   }
 
   const password_hash = await bcrypt.hash(password, 10);
   const result = await query(
-    `INSERT INTO users (username, password_hash, full_name, role, can_discount, can_delete_customer, can_edit_product_price)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `INSERT INTO users (username, password_hash, full_name, role, can_discount, can_delete_customer, can_edit_product_price, can_cancel_order)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      RETURNING id, username, full_name, role, status`,
     [username.trim(), password_hash, full_name.trim(), role,
-     !!can_discount, !!can_delete_customer, !!can_edit_product_price]
+     !!can_discount, !!can_delete_customer, !!can_edit_product_price, !!can_cancel_order]
   );
 
   await logActivity({ userId: req.user.id, action: "CREATE_USER", recordType: "user", recordId: result.rows[0].id, newValue: result.rows[0] });
@@ -38,7 +38,7 @@ router.post("/", async (req, res) => {
 });
 
 router.put("/:id", async (req, res) => {
-  const { full_name, status, can_discount, can_delete_customer, can_edit_product_price, password } = req.body;
+  const { full_name, status, can_discount, can_delete_customer, can_edit_product_price, can_cancel_order, password } = req.body;
 
   let password_hash = null;
   if (password) {
@@ -52,10 +52,11 @@ router.put("/:id", async (req, res) => {
        can_discount = COALESCE($3, can_discount),
        can_delete_customer = COALESCE($4, can_delete_customer),
        can_edit_product_price = COALESCE($5, can_edit_product_price),
-       password_hash = COALESCE($6, password_hash)
-     WHERE id = $7
-     RETURNING id, username, full_name, role, status, can_discount, can_delete_customer, can_edit_product_price`,
-    [full_name, status, can_discount, can_delete_customer, can_edit_product_price, password_hash, req.params.id]
+       can_cancel_order = COALESCE($6, can_cancel_order),
+       password_hash = COALESCE($7, password_hash)
+     WHERE id = $8
+     RETURNING id, username, full_name, role, status, can_discount, can_delete_customer, can_edit_product_price, can_cancel_order`,
+    [full_name, status, can_discount, can_delete_customer, can_edit_product_price, can_cancel_order, password_hash, req.params.id]
   );
 
   if (!result.rows[0]) return res.status(404).json({ error: "المستخدم غير موجود." });
