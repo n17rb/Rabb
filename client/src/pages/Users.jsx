@@ -1,3 +1,6 @@
+import { FiUserPlus } from "react-icons/fi";
+
+const ROLE_LABELS = { super_admin: "مدير١", admin: "مدير٢", driver: "سائق" };
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 
@@ -38,12 +41,14 @@ export default function Users() {
             <div>
               <div style={{ fontWeight: 600 }}>{u.full_name}</div>
               <div className="text-secondary">
-                {u.username} · {u.role === "admin" ? "مدير" : "سائق"}
+                                {u.username} · {ROLE_LABELS[u.role] || u.role}
+
               </div>
             </div>
-            <button className="btn-danger-text" onClick={() => toggleStatus(u)}>
-              {u.status === "active" ? "تعطيل" : "تفعيل"}
-            </button>
+                  <button className="btn-primary icon-row" style={{ justifyContent: "center", marginBottom: 16 }} onClick={() => setShowAdd(!showAdd)}>
+        {showAdd ? "إغلاق" : (<><FiUserPlus /> إضافة مستخدم</>)}
+      </button>
+
           </div>
         ))}
       </div>
@@ -85,28 +90,18 @@ function AddUserForm({ onSaved }) {
       {error && <div className="error-box">{error}</div>}
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>الاسم الكامل</label>
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
-        </div>
-        <div className="field">
-          <label>اسم المستخدم</label>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} required />
-        </div>
-        <div className="field">
-          <label>كلمة المرور</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
-        </div>
-        <div className="field">
           <label>الدور</label>
           <select value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="driver">سائق</option>
-            <option value="admin">مدير</option>
+            <option value="driver">سائق (توصيل)</option>
+            <option value="admin">مدير٢ (صلاحيات تشغيلية، بدون إدارة مستخدمين)</option>
+            <option value="super_admin">مدير١ (كل الصلاحيات)</option>
           </select>
         </div>
 
         {role === "driver" && (
           <div className="field">
             <label>صلاحيات إضافية للسائق</label>
+
             <label style={{ display: "flex", gap: 8, marginBottom: 6, fontWeight: 400 }}>
               <input type="checkbox" checked={canDiscount} onChange={(e) => setCanDiscount(e.target.checked)} />
               يستطيع إعطاء خصم
