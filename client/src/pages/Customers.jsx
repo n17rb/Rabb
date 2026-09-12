@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../api.js";
+import { api, API_ORIGIN } from "../api.js";
 
 export default function Customers() {
   const [query, setQuery] = useState("");
@@ -32,6 +32,16 @@ export default function Customers() {
     search(q);
   }
 
+  async function openCustomer(c) {
+    // نجيب أحدث نسخة كاملة من العميل (فيها كل حقول الموقع)
+    try {
+      const full = await api.getCustomer(c.id);
+      setSelected(full);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   return (
     <div className="page">
       <h1 className="title-lg">العملاء</h1>
@@ -59,7 +69,7 @@ export default function Customers() {
               <p className="text-secondary" style={{ padding: 14 }}>لا يوجد عملاء مطابقون.</p>
             )}
             {customers.map((c) => (
-              <div key={c.id} className="customer-row" onClick={() => setSelected(c)} style={{ cursor: "pointer", padding: "10px 14px" }}>
+              <div key={c.id} className="customer-row" onClick={() => openCustomer(c)} style={{ cursor: "pointer", padding: "10px 14px" }}>
                 <div>
                   <div style={{ fontWeight: 600 }}>{c.name}</div>
                   <div className="text-secondary tabular-num">{c.phone_display} · #{c.sequential_number}</div>
@@ -74,10 +84,10 @@ export default function Customers() {
       {showAddForm && (
         <AddCustomerForm
           onCancel={() => setShowAddForm(false)}
-          onSaved={(c) => {
+          onSaved={async (c) => {
             setShowAddForm(false);
             search(query);
-            setSelected(c);
+            await openCustomer(c);
           }}
         />
       )}
@@ -157,6 +167,12 @@ function CustomerDetail({ customer, onBack }) {
     }
   }
 
+  // الصورة تُخزَّن كرابط نسبي من السيرفر (/uploads/xxx.webp)
+  // لازم نضيف عنوان السيرفر قبلها حتى تظهر صح من الواجهة المنشورة على دومين مختلف
+  const fullPhotoUrl = photoUrl
+    ? (photoUrl.startsWith("http") ? photoUrl : API_ORIGIN + photoUrl)
+    : null;
+
   return (
     <div className="card">
       <button className="btn-danger-text" style={{ marginBottom: 10 }} onClick={onBack}>← رجوع لقائمة العملاء</button>
@@ -166,16 +182,182 @@ function CustomerDetail({ customer, onBack }) {
 
       {error && <div className="error-box">{error}</div>}
 
-      {photoUrl ? (
-        <img src={photoUrl} alt="صورة العمارة" style={{ width: "100%", borderRadius: 8, marginBottom: 12 }} />
+      {fullPhotoUrl ? (
+        <img src={fullPhotoUrl} alt="صورة العمارة" style={{ width: "100%", borderRadius: 8, marginBottom: 12 }} />
       ) : (
         <p className="text-secondary">لا توجد صورة للعمارة بعد.</p>
       )}
 
-      <label className="btn-secondary" style={{ display: "block", textAlign: "center" }}>
+      <label className="btn-secondary" style={{ display: "block", textAlign: "center", marginBottom: 20 }}>
         {uploading ? "جاري الرفع..." : "📸 رفع / تغيير صورة العمارة"}
         <input type="file" accept="image/*" capture="environment" onChange={handlePhoto} style={{ display: "none" }} />
       </label>
+
+      <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
+
+      <LocationForm customer={customer} />
+    </div>
+  );
+}
+
+function LocationForm({ customer }) {
+  const [regions, setRegions] = useState([]);
+  const [regionId, setRegionId] = useState(customer.region_id || "");
+  const [newRegionName, setNewRegionName] = useState("");
+  const [street, setStreet] = useState(customer.street || "");
+  const [buildingNumber, setBuildingNumber] = useState(customer.building_number || "");
+  const [buildingName, setBuildingName] = useState(customer.building_name || "");
+  const [floor, setFloor] = useState(customer.floor || "");
+  const [apartment, setApartment] = useState(customer.apartment || "");
+  const [side, setSide] = useState(customer.side || "");
+  const [accessNotes, setAccessNotes] = useState(customer.access_notes || "");
+  const [latitude, setLatitude] = useState(customer.latitude || null);
+  const [longitude, setLongitude] = useState(customer.longitude || null);
+  const [locating, setLocating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    api.getRegions().then(setRegions).catch(() => {});
+  }, []);
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      setError("هذا المتصفح لا يدعم تحديد الموقع.");
+      return;
+    }
+    setLocating(true);
+    setError("");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLatitude(pos.coords.latitude);
+        setLongitude(pos.coords.longitude);
+        setLocating(false);
+      },
+      (err) => {
+        setError("تعذّر تحديد الموقع: " + err.message);
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      let finalRegionId = regionId || null;
+
+      // لو كتب اسم منطقة جديدة بدل ما يختار من القائمة
+      if (newRegionName.trim()) {
+        const created = await api.createRegion({ name: newRegionName.trim() });
+        finalRegionId = created.id;
+      }
+
+      const maps_url =
+        latitude && longitude
+          ? `https://www.google.com/maps?q=${latitude},${longitude}`
+          : undefined;
+
+      await api.updateCustomer(customer.id, {
+        region_id: finalRegionId,
+        street,
+        building_number: buildingNumber,
+        building_name: buildingName,
+        floor,
+        apartment,
+        side,
+        access_notes: accessNotes,
+        latitude,
+        longitude,
+        maps_url,
+      });
+
+      setSuccess("تم حفظ الموقع والعنوان بنجاح.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <h2 className="title-md">الموقع والعنوان</h2>
+      {error && <div className="error-box">{error}</div>}
+      {success && <div className="success-box">{success}</div>}
+
+      <button
+        type="button"
+        className="btn-secondary"
+        style={{ marginBottom: 14 }}
+        onClick={useCurrentLocation}
+        disabled={locating}
+      >
+        {locating ? "جاري تحديد الموقع..." : "📍 استخدام موقعي الحالي (وأنا واقف عند البيت)"}
+      </button>
+
+      {latitude && longitude && (
+        <p className="text-secondary tabular-num" style={{ marginTop: -8, marginBottom: 14 }}>
+          تم تحديد الموقع ✅ ({latitude.toFixed(5)}, {longitude.toFixed(5)})
+        </p>
+      )}
+
+      <div className="field">
+        <label>المنطقة</label>
+        <select value={regionId} onChange={(e) => { setRegionId(e.target.value); setNewRegionName(""); }}>
+          <option value="">اختر منطقة...</option>
+          {regions.map((r) => (
+            <option key={r.id} value={r.id}>{r.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field">
+        <label>أو أضف منطقة جديدة (اتركه فارغ إذا اخترت من الأعلى)</label>
+        <input value={newRegionName} onChange={(e) => setNewRegionName(e.target.value)} placeholder="مثال: الرابية" />
+      </div>
+
+      <div className="field">
+        <label>الشارع</label>
+        <input value={street} onChange={(e) => setStreet(e.target.value)} />
+      </div>
+
+      <div className="field">
+        <label>رقم العمارة</label>
+        <input value={buildingNumber} onChange={(e) => setBuildingNumber(e.target.value)} />
+      </div>
+
+      <div className="field">
+        <label>اسم العمارة (اختياري)</label>
+        <input value={buildingName} onChange={(e) => setBuildingName(e.target.value)} />
+      </div>
+
+      <div className="field">
+        <label>الطابق</label>
+        <input value={floor} onChange={(e) => setFloor(e.target.value)} />
+      </div>
+
+      <div className="field">
+        <label>رقم الشقة</label>
+        <input value={apartment} onChange={(e) => setApartment(e.target.value)} />
+      </div>
+
+      <div className="field">
+        <label>جهة الشقة (يمين / يسار...)</label>
+        <input value={side} onChange={(e) => setSide(e.target.value)} />
+      </div>
+
+      <div className="field">
+        <label>وصف الوصول (ملاحظة توضح المكان)</label>
+        <textarea rows={2} value={accessNotes} onChange={(e) => setAccessNotes(e.target.value)} />
+      </div>
+
+      <button className="btn-primary" onClick={handleSave} disabled={saving}>
+        {saving ? "جاري الحفظ..." : "حفظ الموقع والعنوان"}
+      </button>
     </div>
   );
 }
