@@ -10,7 +10,8 @@ router.get("/", async (req, res) => {
   res.json(result.rows);
 });
 
-router.post("/", requireRole("admin"), async (req, res) => {
+router.post("/", requireRole("admin", "super_admin"), async (req, res) => {
+
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: "اسم المنطقة مطلوب." });
 
@@ -22,7 +23,8 @@ router.post("/", requireRole("admin"), async (req, res) => {
   res.status(201).json(result.rows[0]);
 });
 
-router.put("/:id", requireRole("admin"), async (req, res) => {
+router.put("/:id", requireRole("admin", "super_admin"), async (req, res) => {
+
   const { name, status } = req.body;
   const result = await query(
     `UPDATE regions SET name = COALESCE($1, name), status = COALESCE($2, status) WHERE id = $3 RETURNING *`,
