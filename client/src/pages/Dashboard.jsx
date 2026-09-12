@@ -1,30 +1,30 @@
 import { useNavigate } from "react-router-dom";
+import { FiUserPlus, FiBox } from "react-icons/fi";
+
+const ROLE_LABELS = {
+  super_admin: "مدير١",
+  admin: "مدير٢",
+  driver: "سائق توصيل",
+};
 
 export default function Dashboard({ user }) {
   const navigate = useNavigate();
+  const isPrivileged = user.role === "super_admin" || user.role === "admin";
 
   return (
     <div className="page">
-      <h1 className="title-lg">مياه جوهرة</h1>
+      <h1 className="title-lg">جوهرة الرابية</h1>
       <p className="text-secondary" style={{ marginBottom: 20 }}>
-        أهلًا {user.full_name} — {user.role === "admin" ? "مدير النظام" : "سائق توزيع"}
+        أهلًا {user.full_name} — {ROLE_LABELS[user.role] || user.role}
       </p>
 
-      <div className="card">
-        <p style={{ margin: 0 }}>
-          ✅ Phase 1 شغالة: إدارة العملاء والمنتجات والمستخدمين.
-          <br />
-          المراحل القادمة (الطلبات، الرحلات، التقارير) ستُضاف لاحقًا فوق هذا الأساس.
-        </p>
-      </div>
-
-      <button className="btn-primary" style={{ marginBottom: 12 }} onClick={() => navigate("/customers")}>
-        ＋ زبون جديد / بحث عن عميل
+      <button className="btn-primary icon-row" style={{ justifyContent: "center", marginBottom: 12 }} onClick={() => navigate("/customers")}>
+        <FiUserPlus /> زبون جديد / بحث عن عميل
       </button>
 
-      {user.role === "admin" && (
-        <button className="btn-secondary" onClick={() => navigate("/products")}>
-          🧴 إدارة المنتجات والأسعار
+      {isPrivileged && (
+        <button className="btn-secondary icon-row" style={{ justifyContent: "center" }} onClick={() => navigate("/products")}>
+          <FiBox /> إدارة المنتجات والأسعار
         </button>
       )}
     </div>
