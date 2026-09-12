@@ -6,6 +6,7 @@ import Setup from "./pages/Setup.jsx";
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Customers from "./pages/Customers.jsx";
+import CustomerDetail from "./pages/CustomerDetail.jsx";
 import Products from "./pages/Products.jsx";
 import Users from "./pages/Users.jsx";
 import BottomNav from "./components/BottomNav.jsx";
@@ -43,18 +44,22 @@ export default function App() {
     return <Login onLoggedIn={setUser} />;
   }
 
+  const isPrivileged = user.role === "super_admin" || user.role === "admin";
+  const isSuperAdmin = user.role === "super_admin";
+
   return (
     <div className="app-shell">
       <div className="top-bar">
-        <strong>مياه جوهرة</strong>
+        <strong>جوهرة الرابية</strong>
         <button className="btn-danger-text" onClick={handleLogout}>خروج</button>
       </div>
 
       <Routes>
         <Route path="/" element={<Dashboard user={user} />} />
         <Route path="/customers" element={<Customers />} />
-        {user.role === "admin" && <Route path="/products" element={<Products />} />}
-        {user.role === "admin" && <Route path="/users" element={<Users />} />}
+        <Route path="/customers/:id" element={<CustomerDetail user={user} />} />
+        {isPrivileged && <Route path="/products" element={<Products />} />}
+        {isSuperAdmin && <Route path="/users" element={<Users />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
