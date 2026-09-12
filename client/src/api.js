@@ -2,6 +2,7 @@ const BASE = "https://rabb.onrender.com/api";
 export const API_ORIGIN = BASE.replace(/\/api$/, "");
 
 
+
 function getToken() {
   return localStorage.getItem("token");
 }
