@@ -42,6 +42,8 @@ router.post("/login", async (req, res) => {
       can_discount: user.can_discount,
       can_delete_customer: user.can_delete_customer,
       can_edit_product_price: user.can_edit_product_price,
+            can_cancel_order: user.can_cancel_order,
+
     },
   });
 });
