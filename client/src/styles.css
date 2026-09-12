@@ -1,15 +1,17 @@
 :root {
-  --bg: #F6F8F8;
+  --bg: #F6F8FA;
   --surface: #FFFFFF;
-  --border: #E3E8E8;
-  --primary: #0E5B57;
-  --primary-dark: #0A4744;
+  --border: #E3E8EE;
+  --primary: #0094FF;
+  --primary-dark: #0077CC;
   --text: #16324A;
   --text-secondary: #6B7B80;
   --urgent: #C1443C;
   --success: #2E7D5B;
   --warning: #B8862E;
+  --whatsapp: #25D366;
 }
+
 
 * { box-sizing: border-box; }
 
