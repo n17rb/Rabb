@@ -7,7 +7,11 @@ import { uploadSingleImage, saveCompressedImage } from "../middleware/upload.js"
 const router = Router();
 router.use(requireAuth);
 
-async function nextSequentialNumber() {
+function isPrivileged(user) {
+  return user.role === "super_admin" || user.role === "admin";
+}
+
+async function nextAutoSequentialNumber() {
   const result = await query("SELECT nextval('customer_seq') AS n");
   return String(result.rows[0].n).padStart(6, "0");
 }
@@ -17,7 +21,7 @@ router.get("/", async (req, res) => {
 
   if (!q) {
     const result = await query(
-      `SELECT c.*, l.region_id, r.name AS region_name
+      `SELECT c.*, l.region_id, l.maps_url, r.name AS region_name
        FROM customers c
        LEFT JOIN customer_locations l ON l.customer_id = c.id
        LEFT JOIN regions r ON r.id = l.region_id
@@ -28,28 +32,30 @@ router.get("/", async (req, res) => {
     return res.json(result.rows);
   }
 
-  const normalizedQuery = normalizePhone(q);
   const result = await query(
-    `SELECT c.*, l.region_id, r.name AS region_name
+    `SELECT c.*, l.region_id, l.maps_url, r.name AS region_name
      FROM customers c
      LEFT JOIN customer_locations l ON l.customer_id = c.id
      LEFT JOIN regions r ON r.id = l.region_id
      WHERE c.status = 'active'
        AND (
-         c.phone_normalized = $1
-         OR c.name ILIKE '%' || $2 || '%'
-         OR c.sequential_number = $2
+         c.phone_display LIKE $1 || '%'
+         OR c.sequential_number = $1
+         OR c.name ILIKE '%' || $1 || '%'
        )
      ORDER BY c.created_at DESC
      LIMIT 30`,
-    [normalizedQuery, q]
+    [q]
   );
   res.json(result.rows);
 });
 
 router.get("/:id", async (req, res) => {
   const result = await query(
-    `SELECT c.*, l.*
+    `SELECT c.*,
+            l.latitude, l.longitude, l.maps_url, l.region_id,
+            l.street, l.building_number, l.building_name, l.floor,
+            l.apartment, l.side, l.access_notes, l.building_photo_url
      FROM customers c
      LEFT JOIN customer_locations l ON l.customer_id = c.id
      WHERE c.id = $1`,
@@ -60,25 +66,31 @@ router.get("/:id", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
-  const { name, phone, phone_alt, notes, region_id, street, building_number,
-          building_name, floor, apartment, side, access_notes, latitude, longitude, maps_url } = req.body;
+  const { name, phone, phone_alt, notes, sequential_number } = req.body;
 
   if (!name || !phone) {
     return res.status(400).json({ error: "الاسم ورقم الهاتف مطلوبان." });
   }
 
   const normalized = normalizePhone(phone);
-  const existing = await query("SELECT * FROM customers WHERE phone_normalized = $1", [normalized]);
-
-  if (existing.rows[0]) {
+  const existingPhone = await query("SELECT * FROM customers WHERE phone_normalized = $1", [normalized]);
+  if (existingPhone.rows[0]) {
     return res.status(200).json({
       alreadyExists: true,
       message: "رقم الهاتف موجود مسبقًا — تم عرض العميل الحالي بدل إنشاء عميل جديد.",
-      customer: existing.rows[0],
+      customer: existingPhone.rows[0],
     });
   }
 
-  const seqNumber = await nextSequentialNumber();
+  let seqNumber = (sequential_number || "").trim();
+  if (seqNumber) {
+    const existingSeq = await query("SELECT id FROM customers WHERE sequential_number = $1", [seqNumber]);
+    if (existingSeq.rows[0]) {
+      return res.status(400).json({ error: `الرقم التسلسلي "${seqNumber}" مستخدم لعميل آخر مسبقًا.` });
+    }
+  } else {
+    seqNumber = await nextAutoSequentialNumber();
+  }
 
   const inserted = await query(
     `INSERT INTO customers (sequential_number, name, phone_normalized, phone_display, phone_alt, notes, created_by)
@@ -88,21 +100,14 @@ router.post("/", async (req, res) => {
   );
   const customer = inserted.rows[0];
 
-  await query(
-    `INSERT INTO customer_locations
-      (customer_id, latitude, longitude, maps_url, region_id, street, building_number, building_name, floor, apartment, side, access_notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-    [customer.id, latitude || null, longitude || null, maps_url || null, region_id || null,
-     street || null, building_number || null, building_name || null, floor || null,
-     apartment || null, side || null, access_notes || null]
-  );
+  await query(`INSERT INTO customer_locations (customer_id) VALUES ($1)`, [customer.id]);
 
   await logActivity({
     userId: req.user.id,
     action: "CREATE_CUSTOMER",
     recordType: "customer",
     recordId: customer.id,
-    newValue: { name: customer.name, phone: customer.phone_display },
+    newValue: { name: customer.name, phone: customer.phone_display, sequential_number: seqNumber },
   });
 
   res.status(201).json({ alreadyExists: false, customer });
@@ -113,13 +118,51 @@ router.put("/:id", async (req, res) => {
   const before = await query("SELECT * FROM customers WHERE id = $1", [id]);
   if (!before.rows[0]) return res.status(404).json({ error: "العميل غير موجود." });
 
-  const { name, notes, region_id, street, building_number, building_name,
-          floor, apartment, side, access_notes, latitude, longitude, maps_url } = req.body;
+  const {
+    name, phone, sequential_number, notes,
+    region_id, street, building_number, building_name,
+    floor, apartment, side, access_notes,
+    latitude, longitude, maps_url,
+  } = req.body;
+
+  let phoneNormalized = before.rows[0].phone_normalized;
+  let phoneDisplay = before.rows[0].phone_display;
+
+  if (phone) {
+    const newNormalized = normalizePhone(phone);
+    if (newNormalized !== before.rows[0].phone_normalized) {
+      const dup = await query(
+        "SELECT id FROM customers WHERE phone_normalized = $1 AND id != $2",
+        [newNormalized, id]
+      );
+      if (dup.rows[0]) {
+        return res.status(400).json({ error: "رقم الهاتف هذا مستخدم لعميل آخر مسبقًا." });
+      }
+      phoneNormalized = newNormalized;
+      phoneDisplay = formatPhoneForDisplay(newNormalized);
+    }
+  }
+
+  if (sequential_number && sequential_number.trim() !== before.rows[0].sequential_number) {
+    const dupSeq = await query(
+      "SELECT id FROM customers WHERE sequential_number = $1 AND id != $2",
+      [sequential_number.trim(), id]
+    );
+    if (dupSeq.rows[0]) {
+      return res.status(400).json({ error: `الرقم التسلسلي "${sequential_number}" مستخدم لعميل آخر مسبقًا.` });
+    }
+  }
 
   const updated = await query(
-    `UPDATE customers SET name = COALESCE($1, name), notes = COALESCE($2, notes), updated_at = now()
-     WHERE id = $3 RETURNING *`,
-    [name, notes, id]
+    `UPDATE customers SET
+       name = COALESCE($1, name),
+       phone_normalized = $2,
+       phone_display = $3,
+       sequential_number = COALESCE(NULLIF($4, ''), sequential_number),
+       notes = COALESCE($5, notes),
+       updated_at = now()
+     WHERE id = $6 RETURNING *`,
+    [name, phoneNormalized, phoneDisplay, sequential_number, notes, id]
   );
 
   await query(
@@ -154,8 +197,8 @@ router.put("/:id", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  if (!req.user.can_delete_customer && req.user.role !== "admin") {
-    return res.status(403).json({ error: "ليست لديك صلاحية أرشفة العملاء." });
+  if (!isPrivileged(req.user) && !req.user.can_delete_customer) {
+    return res.status(403).json({ error: "ليست لديك صلاحية حذف العملاء." });
   }
   const result = await query(
     "UPDATE customers SET status = 'archived', updated_at = now() WHERE id = $1 RETURNING *",
@@ -170,7 +213,7 @@ router.delete("/:id", async (req, res) => {
     recordId: req.params.id,
   });
 
-  res.json({ message: "تمت أرشفة العميل." });
+  res.json({ message: "تم حذف العميل." });
 });
 
 router.post("/:id/photo", uploadSingleImage, async (req, res) => {
