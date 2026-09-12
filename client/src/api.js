@@ -1,4 +1,5 @@
-const BASE = "/api";
+const BASE = "https://rabb.onrender.com/api";
+
 
 function getToken() {
   return localStorage.getItem("token");
