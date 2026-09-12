@@ -16,7 +16,8 @@ router.get("/", async (req, res) => {
   res.json(result.rows);
 });
 
-router.post("/", requireRole("admin"), async (req, res) => {
+router.post("/", requireRole("admin", "super_admin"), async (req, res) => {
+
   const { name, type, unit_price, sort_order } = req.body;
   if (!name || unit_price == null) {
     return res.status(400).json({ error: "اسم المنتج والسعر مطلوبان." });
@@ -40,7 +41,8 @@ router.post("/", requireRole("admin"), async (req, res) => {
 });
 
 router.put("/:id", async (req, res) => {
-  if (req.user.role !== "admin" && !req.user.can_edit_product_price) {
+    if (req.user.role !== "admin" && req.user.role !== "super_admin" && !req.user.can_edit_product_price) {
+
     return res.status(403).json({ error: "ليست لديك صلاحية تعديل المنتجات أو الأسعار." });
   }
 
@@ -72,7 +74,8 @@ router.put("/:id", async (req, res) => {
   res.json(updated.rows[0]);
 });
 
-router.delete("/:id", requireRole("admin"), async (req, res) => {
+router.delete("/:id", requireRole("admin", "super_admin"), async (req, res) => {
+
   const result = await query(
     "UPDATE products SET status = 'archived', updated_at = now() WHERE id = $1 RETURNING *",
     [req.params.id]
