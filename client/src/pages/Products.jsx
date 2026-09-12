@@ -1,3 +1,4 @@
+import { FiPlus, FiEdit2 } from "react-icons/fi";
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 
@@ -46,9 +47,10 @@ export default function Products() {
       <h1 className="title-lg">المنتجات والأسعار</h1>
       {error && <div className="error-box">{error}</div>}
 
-      <button className="btn-primary" style={{ marginBottom: 16 }} onClick={() => setShowAdd(!showAdd)}>
-        {showAdd ? "إغلاق" : "＋ إضافة منتج جديد"}
+      <button className="btn-primary icon-row" style={{ justifyContent: "center", marginBottom: 16 }} onClick={() => setShowAdd(!showAdd)}>
+        {showAdd ? "إغلاق" : (<><FiPlus /> إضافة منتج جديد</>)}
       </button>
+
 
       {showAdd && <AddProductForm onSaved={() => { setShowAdd(false); load(); }} />}
 
@@ -75,11 +77,12 @@ export default function Products() {
                 </div>
               ) : (
                 <div
-                  className="tabular-num"
+                  className="tabular-num" icon-row
                   style={{ fontWeight: 700, cursor: "pointer" }}
                   onClick={() => { setEditingId(p.id); setEditPrice(p.unit_price); }}
                 >
-                  {Number(p.unit_price).toFixed(2)} JD ✏️
+                                    {Number(p.unit_price).toFixed(2)} JD <FiEdit2 size={14} />
+
                 </div>
               )}
             </div>
