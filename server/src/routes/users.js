@@ -20,8 +20,8 @@ router.post("/", async (req, res) => {
   if (!username || !password || !full_name || !role) {
     return res.status(400).json({ error: "الرجاء تعبئة كل الحقول المطلوبة." });
   }
-  if (!["super_admin", "admin", "driver"].includes(role)) {
-    return res.status(400).json({ error: "الدور يجب أن يكون super_admin أو admin أو driver." });
+  if (!["super_admin", "admin", "driver", "data_entry"].includes(role)) {
+    return res.status(400).json({ error: "الدور يجب أن يكون super_admin أو admin أو driver أو data_entry." });
   }
 
   const password_hash = await bcrypt.hash(password, 10);
