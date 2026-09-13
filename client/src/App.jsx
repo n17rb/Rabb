@@ -56,7 +56,7 @@ export default function App() {
 
       <Routes>
         <Route path="/" element={<Dashboard user={user} />} />
-        <Route path="/customers" element={<Customers />} />
+        <Route path="/customers" element={<Customers user={user} />} />
         <Route path="/customers/:id" element={<CustomerDetail user={user} />} />
         {isPrivileged && <Route path="/products" element={<Products />} />}
         {isSuperAdmin && <Route path="/users" element={<Users />} />}
