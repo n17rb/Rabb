@@ -7,8 +7,15 @@ import { uploadSingleImage, saveCompressedImage } from "../middleware/upload.js"
 const router = Router();
 router.use(requireAuth);
 
-function isPrivileged(user) {
-  return user.role === "super_admin" || user.role === "admin";
+function canManageCustomers(user) {
+  return ["super_admin", "admin", "data_entry"].includes(user.role);
+}
+
+function requireCanManageCustomers(req, res, next) {
+  if (!canManageCustomers(req.user)) {
+    return res.status(403).json({ error: "ليست لديك صلاحية إضافة أو تعديل بيانات العملاء." });
+  }
+  next();
 }
 
 async function nextAutoSequentialNumber() {
@@ -65,7 +72,7 @@ router.get("/:id", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requireCanManageCustomers, async (req, res) => {
   const { name, phone, phone_alt, notes, sequential_number } = req.body;
 
   if (!name || !phone) {
@@ -113,7 +120,7 @@ router.post("/", async (req, res) => {
   res.status(201).json({ alreadyExists: false, customer });
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", requireCanManageCustomers, async (req, res) => {
   const { id } = req.params;
   const before = await query("SELECT * FROM customers WHERE id = $1", [id]);
   if (!before.rows[0]) return res.status(404).json({ error: "العميل غير موجود." });
@@ -196,10 +203,7 @@ router.put("/:id", async (req, res) => {
   res.json(updated.rows[0]);
 });
 
-router.delete("/:id", async (req, res) => {
-  if (!isPrivileged(req.user) && !req.user.can_delete_customer) {
-    return res.status(403).json({ error: "ليست لديك صلاحية حذف العملاء." });
-  }
+router.delete("/:id", requireCanManageCustomers, async (req, res) => {
   const result = await query(
     "UPDATE customers SET status = 'archived', updated_at = now() WHERE id = $1 RETURNING *",
     [req.params.id]
@@ -216,7 +220,7 @@ router.delete("/:id", async (req, res) => {
   res.json({ message: "تم حذف العميل." });
 });
 
-router.post("/:id/photo", uploadSingleImage, async (req, res) => {
+router.post("/:id/photo", requireCanManageCustomers, uploadSingleImage, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "لم يتم إرفاق صورة." });
 
   const filename = await saveCompressedImage(req.file.buffer, `customer-${req.params.id}`);
