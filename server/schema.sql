@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(100) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   full_name VARCHAR(150) NOT NULL,
-  role VARCHAR(20) NOT NULL CHECK (role IN ('super_admin', 'admin', 'driver')),
+  role VARCHAR(20) NOT NULL CHECK (role IN ('super_admin', 'admin', 'driver', 'data_entry')),
   status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
   can_discount BOOLEAN NOT NULL DEFAULT false,
   can_delete_customer BOOLEAN NOT NULL DEFAULT false,
@@ -18,18 +18,14 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- ترقية آمنة لقاعدة بيانات موجودة مسبقًا: نسمح بالدور الجديد 'super_admin'
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super_admin', 'admin', 'driver'));
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super_admin', 'admin', 'driver', 'data_entry'));
 
--- مهم جدًا: ترقية أول حساب تم إنشاؤه إلى "مدير١" تلقائيًا إذا لا يوجد أي مدير١ بالنظام بعد.
--- هذا يمنع فقدان وصولك لصفحة المستخدمين بعد هذا التحديث (حسابك الحالي كان "مدير" بالتسمية القديمة).
--- آمن للتكرار: بعد أول مرة يصبح هناك مدير١، هذا السطر لا يفعل شيئًا بعدها.
 UPDATE users SET role = 'super_admin'
 WHERE id = (SELECT MIN(id) FROM users)
   AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'super_admin');
 
--- ---------- المناطق (قابلة للإضافة من الإدارة) ----------
+-- ---------- المناطق ----------
 CREATE TABLE IF NOT EXISTS regions (
   id SERIAL PRIMARY KEY,
   name VARCHAR(100) UNIQUE NOT NULL,
@@ -51,6 +47,8 @@ CREATE TABLE IF NOT EXISTS customers (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE customers ALTER COLUMN sequential_number TYPE VARCHAR(20);
 
 CREATE SEQUENCE IF NOT EXISTS customer_seq START 1;
 
@@ -98,7 +96,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- ---------- فهارس للأداء ----------
+-- ---------- فهارس ----------
 CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone_normalized);
 CREATE INDEX IF NOT EXISTS idx_customers_phone_display_pattern ON customers(phone_display text_pattern_ops);
 CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
@@ -106,17 +104,11 @@ CREATE INDEX IF NOT EXISTS idx_customers_seq ON customers(sequential_number);
 CREATE INDEX IF NOT EXISTS idx_products_status ON products(status);
 CREATE INDEX IF NOT EXISTS idx_activity_log_record ON activity_log(record_type, record_id);
 
--- ============================================================
--- تنظيف أي تكرار سابق قبل إضافة القيد الفريد (آمن، لا يمس منتج داخل طلب)
--- ============================================================
 DELETE FROM products a USING products b
 WHERE a.id > b.id AND a.name = b.name;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_products_name_unique ON products(name);
 
--- ============================================================
--- Seed Data: المنتجات الابتدائية (قابلة للتعديل لاحقًا من لوحة الإدارة)
--- ============================================================
 INSERT INTO products (name, type, unit_price, sort_order) VALUES
   ('قارورة 19 لتر (تعبئة)', 'standard', 1.00, 1),
   ('قارورة 10 لتر (تعبئة)', 'standard', 0.75, 2),
