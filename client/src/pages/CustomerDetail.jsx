@@ -11,6 +11,8 @@ export default function CustomerDetail({ user }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const canManage = ["super_admin", "admin", "data_entry"].includes(user.role);
+
   async function load() {
     setError("");
     try {
@@ -37,23 +39,20 @@ export default function CustomerDetail({ user }) {
 
       {error && <div className="error-box">{error}</div>}
 
-      <CustomerHeader customer={customer} user={user} onChanged={load} onDeleted={() => navigate("/customers")} />
-      <PhotoSection customer={customer} onChanged={load} />
-      <LocationSection customer={customer} onChanged={load} />
+      <CustomerHeader customer={customer} user={user} canManage={canManage} onChanged={load} onDeleted={() => navigate("/customers")} />
+      <PhotoSection customer={customer} canManage={canManage} onChanged={load} />
+      <LocationSection customer={customer} canManage={canManage} onChanged={load} />
     </div>
   );
 }
 
-function CustomerHeader({ customer, user, onChanged, onDeleted }) {
+function CustomerHeader({ customer, canManage, onChanged, onDeleted }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(customer.name);
   const [phone, setPhone] = useState(customer.phone_display);
   const [seq, setSeq] = useState(customer.sequential_number);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-
-  const isPrivileged = user.role === "super_admin" || user.role === "admin";
-  const canDelete = isPrivileged || user.can_delete_customer;
 
   const whatsappLink = `https://wa.me/${customer.phone_normalized}`;
 
@@ -114,10 +113,12 @@ function CustomerHeader({ customer, user, onChanged, onDeleted }) {
           <a className="icon-btn whatsapp" href={whatsappLink} target="_blank" rel="noreferrer" title="فتح واتساب">
             <FaWhatsapp size={18} />
           </a>
-          <button className="icon-btn" onClick={() => setEditing(true)} title="تعديل">
-            <FiEdit2 size={16} />
-          </button>
-          {canDelete && (
+          {canManage && (
+            <button className="icon-btn" onClick={() => setEditing(true)} title="تعديل">
+              <FiEdit2 size={16} />
+            </button>
+          )}
+          {canManage && (
             <button className="icon-btn" style={{ color: "var(--urgent)", borderColor: "#f6cfcb" }} onClick={handleDelete} title="حذف">
               <FiTrash2 size={16} />
             </button>
@@ -128,7 +129,7 @@ function CustomerHeader({ customer, user, onChanged, onDeleted }) {
   );
 }
 
-function PhotoSection({ customer, onChanged }) {
+function PhotoSection({ customer, canManage, onChanged }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
@@ -159,16 +160,33 @@ function PhotoSection({ customer, onChanged }) {
       ) : (
         <p className="text-secondary">لا توجد صورة للعمارة بعد.</p>
       )}
-      <label className="btn-secondary icon-row" style={{ justifyContent: "center" }}>
-        <FiCamera />
-        {uploading ? "جاري الرفع..." : "رفع / تغيير صورة العمارة"}
-        <input type="file" accept="image/*" capture="environment" onChange={handlePhoto} style={{ display: "none" }} />
-      </label>
+      {canManage && (
+        <label className="btn-secondary icon-row" style={{ justifyContent: "center" }}>
+          <FiCamera />
+          {uploading ? "جاري الرفع..." : "رفع / تغيير صورة العمارة"}
+          <input type="file" accept="image/*" capture="environment" onChange={handlePhoto} style={{ display: "none" }} />
+        </label>
+      )}
     </div>
   );
 }
 
-function LocationSection({ customer, onChanged }) {
+async function reverseGeocodeStreet(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
+    );
+    const data = await res.json();
+    return data?.address?.road || data?.address?.neighbourhood || null;
+  } catch {
+    return null;
+  }
+}
+
+function LocationSection({ customer, canManage, onChanged }) {
+  const hasSavedLocation = Boolean(customer.maps_url);
+  const [editingLocation, setEditingLocation] = useState(!hasSavedLocation);
+
   const [regions, setRegions] = useState([]);
   const [regionId, setRegionId] = useState(customer.region_id || "");
   const [newRegionName, setNewRegionName] = useState("");
@@ -181,7 +199,7 @@ function LocationSection({ customer, onChanged }) {
   const [accessNotes, setAccessNotes] = useState(customer.access_notes || "");
   const [latitude, setLatitude] = useState(customer.latitude || null);
   const [longitude, setLongitude] = useState(customer.longitude || null);
-  const [pastedLink, setPastedLink] = useState(customer.maps_url || "");
+  const [pastedLink, setPastedLink] = useState("");
   const [locating, setLocating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -199,10 +217,22 @@ function LocationSection({ customer, onChanged }) {
     setLocating(true);
     setError("");
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLatitude(pos.coords.latitude);
-        setLongitude(pos.coords.longitude);
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const confirmed = confirm("هل تريد تأكيد موقعك الحالي كموقع هذا العميل؟");
+        if (!confirmed) {
+          setLocating(false);
+          return;
+        }
+        setLatitude(lat);
+        setLongitude(lng);
         setPastedLink("");
+
+        if (!street.trim()) {
+          const detectedStreet = await reverseGeocodeStreet(lat, lng);
+          if (detectedStreet) setStreet(detectedStreet);
+        }
         setLocating(false);
       },
       (err) => {
@@ -234,7 +264,7 @@ function LocationSection({ customer, onChanged }) {
 
       let finalLat = latitude;
       let finalLng = longitude;
-      let finalMapsUrl;
+      let finalMapsUrl = customer.maps_url;
 
       if (pastedLink.trim()) {
         finalMapsUrl = pastedLink.trim();
@@ -262,6 +292,7 @@ function LocationSection({ customer, onChanged }) {
       });
 
       setSuccess("تم حفظ الموقع والعنوان بنجاح.");
+      setEditingLocation(false);
       onChanged();
     } catch (err) {
       setError(err.message);
@@ -270,25 +301,41 @@ function LocationSection({ customer, onChanged }) {
     }
   }
 
-  const hasLocation = Boolean(customer.maps_url || (latitude && longitude));
+  const mapLink = customer.maps_url || (latitude && longitude ? `https://www.google.com/maps?q=${latitude},${longitude}` : null);
+
+  if (!editingLocation) {
+    return (
+      <div className="card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <h2 className="title-md" style={{ margin: 0 }}>الموقع والعنوان</h2>
+          <div className="icon-row">
+            {mapLink && (
+              <a className="icon-btn map" href={mapLink} target="_blank" rel="noreferrer" title="فتح الموقع على الخريطة">
+                <FiMapPin size={18} />
+              </a>
+            )}
+            {canManage && (
+              <button className="icon-btn" onClick={() => setEditingLocation(true)} title="تعديل الموقع">
+                <FiEdit2 size={16} />
+              </button>
+            )}
+          </div>
+        </div>
+        <p className="text-secondary" style={{ margin: 0, lineHeight: 1.8 }}>
+          {customer.region_name && <>المنطقة: {customer.region_name}<br /></>}
+          {street && <>الشارع: {street}<br /></>}
+          {buildingNumber && <>عمارة: {buildingNumber} {buildingName && `(${buildingName})`}<br /></>}
+          {floor && <>الطابق: {floor}<br /></>}
+          {apartment && <>شقة: {apartment} {side && `— ${side}`}<br /></>}
+          {accessNotes && <>ملاحظة: {accessNotes}</>}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <h2 className="title-md" style={{ margin: 0 }}>الموقع والعنوان</h2>
-        {hasLocation && (
-          <a
-            className="icon-btn map"
-            href={customer.maps_url || `https://www.google.com/maps?q=${latitude},${longitude}`}
-            target="_blank"
-            rel="noreferrer"
-            title="فتح موقع العميل على الخريطة"
-          >
-            <FiMapPin size={18} />
-          </a>
-        )}
-      </div>
-
+      <h2 className="title-md">الموقع والعنوان</h2>
       {error && <div className="error-box">{error}</div>}
       {success && <div className="success-box">{success}</div>}
 
@@ -299,17 +346,17 @@ function LocationSection({ customer, onChanged }) {
         onClick={useCurrentLocation}
         disabled={locating}
       >
-        {locating ? "جاري تحديد الموقع..." : "📍 أنا واقف عند بيت العميل الآن"}
+        {locating ? "جاري تحديد الموقع..." : "📍 أنا عند بيت العميل الآن"}
       </button>
 
       {latitude && longitude && !pastedLink && (
         <p className="text-secondary tabular-num" style={{ marginTop: -4, marginBottom: 10 }}>
-          تم تحديد الموقع ✅ ({latitude.toFixed(5)}, {longitude.toFixed(5)})
+          تم تحديد الموقع ✅
         </p>
       )}
 
       <div className="field">
-        <label>أو الصق رابط موقع Google Maps مباشرة (بدون الحاجة للوقوف عند البيت)</label>
+        <label>أو الصق رابط موقع Google Maps مباشرة</label>
         <input
           value={pastedLink}
           onChange={(e) => setPastedLink(e.target.value)}
@@ -335,7 +382,7 @@ function LocationSection({ customer, onChanged }) {
       <div className="field-row">
         <div className="field">
           <label>الشارع</label>
-          <input value={street} onChange={(e) => setStreet(e.target.value)} />
+          <input value={street} onChange={(e) => setStreet(e.target.value)} placeholder="يُملأ تلقائيًا عند تحديد الموقع" />
         </div>
         <div className="field">
           <label>رقم العمارة</label>
@@ -357,9 +404,27 @@ function LocationSection({ customer, onChanged }) {
           <label>رقم الشقة</label>
           <input value={apartment} onChange={(e) => setApartment(e.target.value)} />
         </div>
-        <div className="field">
-          <label>الجهة</label>
-          <input value={side} onChange={(e) => setSide(e.target.value)} placeholder="يمين/يسار" />
+      </div>
+
+      <div className="field">
+        <label>جهة الشقة</label>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            type="button"
+            className={side === "يمين" ? "btn-primary" : "btn-secondary"}
+            style={{ flex: 1 }}
+            onClick={() => setSide("يمين")}
+          >
+            يمين
+          </button>
+          <button
+            type="button"
+            className={side === "يسار" ? "btn-primary" : "btn-secondary"}
+            style={{ flex: 1 }}
+            onClick={() => setSide("يسار")}
+          >
+            يسار
+          </button>
         </div>
       </div>
 
@@ -368,9 +433,12 @@ function LocationSection({ customer, onChanged }) {
         <textarea rows={2} value={accessNotes} onChange={(e) => setAccessNotes(e.target.value)} />
       </div>
 
-      <button className="btn-primary" onClick={handleSave} disabled={saving}>
+      <button className="btn-primary" style={{ marginBottom: 10 }} onClick={handleSave} disabled={saving}>
         {saving ? "جاري الحفظ..." : "حفظ الموقع والعنوان"}
       </button>
+      {hasSavedLocation && (
+        <button type="button" className="btn-secondary" onClick={() => setEditingLocation(false)}>إلغاء</button>
+      )}
     </div>
   );
 }
