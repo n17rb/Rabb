@@ -3,13 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { FiUserPlus, FiSearch } from "react-icons/fi";
 
-export default function Customers() {
+export default function Customers({ user }) {
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const navigate = useNavigate();
+
+  const canAdd = ["super_admin", "admin", "data_entry"].includes(user.role);
 
   async function search(q) {
     setLoading(true);
@@ -50,9 +52,11 @@ export default function Customers() {
             />
           </div>
 
-          <button className="btn-primary icon-row" style={{ justifyContent: "center", marginBottom: 16 }} onClick={() => setShowAddForm(true)}>
-            <FiUserPlus /> زبون جديد
-          </button>
+          {canAdd && (
+            <button className="btn-primary icon-row" style={{ justifyContent: "center", marginBottom: 16 }} onClick={() => setShowAddForm(true)}>
+              <FiUserPlus /> زبون جديد
+            </button>
+          )}
 
           {error && <div className="error-box">{error}</div>}
           {loading && <p className="text-secondary">جاري البحث...</p>}
