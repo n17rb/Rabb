@@ -39,8 +39,7 @@ export default function CustomerDetail({ user }) {
 
       {error && <div className="error-box">{error}</div>}
 
-      <CustomerHeader customer={customer} user={user} canManage={canManage} onChanged={load} onDeleted={() => navigate("/customers")} />
-      <PhotoSection customer={customer} canManage={canManage} onChanged={load} />
+      <CustomerHeader customer={customer} canManage={canManage} onChanged={load} onDeleted={() => navigate("/customers")} />
       <LocationSection customer={customer} canManage={canManage} onChanged={load} />
     </div>
   );
@@ -51,17 +50,35 @@ function CustomerHeader({ customer, canManage, onChanged, onDeleted }) {
   const [name, setName] = useState(customer.name);
   const [phone, setPhone] = useState(customer.phone_display);
   const [seq, setSeq] = useState(customer.sequential_number);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   const whatsappLink = `https://wa.me/${customer.phone_normalized}`;
+
+  const currentPhotoUrl = customer.building_photo_url
+    ? (customer.building_photo_url.startsWith("http") ? customer.building_photo_url : API_ORIGIN + customer.building_photo_url)
+    : null;
+
+  function handlePickPhoto(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }
 
   async function handleSave() {
     setSaving(true);
     setError("");
     try {
       await api.updateCustomer(customer.id, { name, phone, sequential_number: seq });
+      if (photoFile) {
+        await api.uploadCustomerPhoto(customer.id, photoFile);
+      }
       setEditing(false);
+      setPhotoFile(null);
+      setPhotoPreview(null);
       onChanged();
     } catch (err) {
       setError(err.message);
@@ -79,6 +96,20 @@ function CustomerHeader({ customer, canManage, onChanged, onDeleted }) {
     return (
       <div className="card">
         {error && <div className="error-box">{error}</div>}
+
+        {(photoPreview || currentPhotoUrl) && (
+          <img
+            src={photoPreview || currentPhotoUrl}
+            alt="صورة العمارة"
+            style={{ width: "100%", borderRadius: 8, marginBottom: 12 }}
+          />
+        )}
+        <label className="btn-secondary icon-row" style={{ justifyContent: "center", marginBottom: 16 }}>
+          <FiCamera />
+          {photoFile ? "تم اختيار صورة جديدة — اضغط حفظ لتثبيتها" : "تغيير صورة العمارة"}
+          <input type="file" accept="image/*" capture="environment" onChange={handlePickPhoto} style={{ display: "none" }} />
+        </label>
+
         <div className="field">
           <label>اسم العميل</label>
           <input value={name} onChange={(e) => setName(e.target.value)} />
@@ -94,7 +125,13 @@ function CustomerHeader({ customer, canManage, onChanged, onDeleted }) {
         <button className="btn-primary" style={{ marginBottom: 10 }} disabled={saving} onClick={handleSave}>
           {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
         </button>
-        <button type="button" className="btn-secondary" onClick={() => setEditing(false)}>إلغاء</button>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => { setEditing(false); setPhotoFile(null); setPhotoPreview(null); }}
+        >
+          إلغاء
+        </button>
       </div>
     );
   }
@@ -102,6 +139,13 @@ function CustomerHeader({ customer, canManage, onChanged, onDeleted }) {
   return (
     <div className="card">
       {error && <div className="error-box">{error}</div>}
+
+      {currentPhotoUrl ? (
+        <img src={currentPhotoUrl} alt="صورة العمارة" style={{ width: "100%", borderRadius: 8, marginBottom: 12 }} />
+      ) : (
+        <p className="text-secondary">لا توجد صورة للعمارة بعد — اضغط تعديل لإضافتها.</p>
+      )}
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <h2 className="title-md" style={{ marginBottom: 4 }}>{customer.name}</h2>
@@ -125,48 +169,6 @@ function CustomerHeader({ customer, canManage, onChanged, onDeleted }) {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function PhotoSection({ customer, canManage, onChanged }) {
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState("");
-
-  const fullPhotoUrl = customer.building_photo_url
-    ? (customer.building_photo_url.startsWith("http") ? customer.building_photo_url : API_ORIGIN + customer.building_photo_url)
-    : null;
-
-  async function handlePhoto(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    setUploading(true);
-    setError("");
-    try {
-      await api.uploadCustomerPhoto(customer.id, file);
-      onChanged();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div className="card">
-      {error && <div className="error-box">{error}</div>}
-      {fullPhotoUrl ? (
-        <img src={fullPhotoUrl} alt="صورة العمارة" style={{ width: "100%", borderRadius: 8, marginBottom: 12 }} />
-      ) : (
-        <p className="text-secondary">لا توجد صورة للعمارة بعد.</p>
-      )}
-      {canManage && (
-        <label className="btn-secondary icon-row" style={{ justifyContent: "center" }}>
-          <FiCamera />
-          {uploading ? "جاري الرفع..." : "رفع / تغيير صورة العمارة"}
-          <input type="file" accept="image/*" capture="environment" onChange={handlePhoto} style={{ display: "none" }} />
-        </label>
-      )}
     </div>
   );
 }
@@ -277,168 +279,4 @@ function LocationSection({ customer, canManage, onChanged }) {
         finalMapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
       }
 
-      await api.updateCustomer(customer.id, {
-        region_id: finalRegionId,
-        street,
-        building_number: buildingNumber,
-        building_name: buildingName,
-        floor,
-        apartment,
-        side,
-        access_notes: accessNotes,
-        latitude: finalLat,
-        longitude: finalLng,
-        maps_url: finalMapsUrl,
-      });
-
-      setSuccess("تم حفظ الموقع والعنوان بنجاح.");
-      setEditingLocation(false);
-      onChanged();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const mapLink = customer.maps_url || (latitude && longitude ? `https://www.google.com/maps?q=${latitude},${longitude}` : null);
-
-  if (!editingLocation) {
-    return (
-      <div className="card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <h2 className="title-md" style={{ margin: 0 }}>الموقع والعنوان</h2>
-          <div className="icon-row">
-            {mapLink && (
-              <a className="icon-btn map" href={mapLink} target="_blank" rel="noreferrer" title="فتح الموقع على الخريطة">
-                <FiMapPin size={18} />
-              </a>
-            )}
-            {canManage && (
-              <button className="icon-btn" onClick={() => setEditingLocation(true)} title="تعديل الموقع">
-                <FiEdit2 size={16} />
-              </button>
-            )}
-          </div>
-        </div>
-        <p className="text-secondary" style={{ margin: 0, lineHeight: 1.8 }}>
-          {customer.region_name && <>المنطقة: {customer.region_name}<br /></>}
-          {street && <>الشارع: {street}<br /></>}
-          {buildingNumber && <>عمارة: {buildingNumber} {buildingName && `(${buildingName})`}<br /></>}
-          {floor && <>الطابق: {floor}<br /></>}
-          {apartment && <>شقة: {apartment} {side && `— ${side}`}<br /></>}
-          {accessNotes && <>ملاحظة: {accessNotes}</>}
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="card">
-      <h2 className="title-md">الموقع والعنوان</h2>
-      {error && <div className="error-box">{error}</div>}
-      {success && <div className="success-box">{success}</div>}
-
-      <button
-        type="button"
-        className="btn-secondary"
-        style={{ marginBottom: 10 }}
-        onClick={useCurrentLocation}
-        disabled={locating}
-      >
-        {locating ? "جاري تحديد الموقع..." : "📍 أنا عند بيت العميل الآن"}
-      </button>
-
-      {latitude && longitude && !pastedLink && (
-        <p className="text-secondary tabular-num" style={{ marginTop: -4, marginBottom: 10 }}>
-          تم تحديد الموقع ✅
-        </p>
-      )}
-
-      <div className="field">
-        <label>أو الصق رابط موقع Google Maps مباشرة</label>
-        <input
-          value={pastedLink}
-          onChange={(e) => setPastedLink(e.target.value)}
-          placeholder="https://maps.google.com/..."
-        />
-      </div>
-
-      <div className="field">
-        <label>المنطقة</label>
-        <select value={regionId} onChange={(e) => { setRegionId(e.target.value); setNewRegionName(""); }}>
-          <option value="">اختر منطقة...</option>
-          {regions.map((r) => (
-            <option key={r.id} value={r.id}>{r.name}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="field">
-        <label>أو أضف منطقة جديدة (اتركه فارغ إذا اخترت من الأعلى)</label>
-        <input value={newRegionName} onChange={(e) => setNewRegionName(e.target.value)} placeholder="مثال: الرابية" />
-      </div>
-
-      <div className="field-row">
-        <div className="field">
-          <label>الشارع</label>
-          <input value={street} onChange={(e) => setStreet(e.target.value)} placeholder="يُملأ تلقائيًا عند تحديد الموقع" />
-        </div>
-        <div className="field">
-          <label>رقم العمارة</label>
-          <input value={buildingNumber} onChange={(e) => setBuildingNumber(e.target.value)} />
-        </div>
-      </div>
-
-      <div className="field">
-        <label>اسم العمارة (اختياري)</label>
-        <input value={buildingName} onChange={(e) => setBuildingName(e.target.value)} />
-      </div>
-
-      <div className="field-row">
-        <div className="field">
-          <label>الطابق</label>
-          <input value={floor} onChange={(e) => setFloor(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>رقم الشقة</label>
-          <input value={apartment} onChange={(e) => setApartment(e.target.value)} />
-        </div>
-      </div>
-
-      <div className="field">
-        <label>جهة الشقة</label>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            type="button"
-            className={side === "يمين" ? "btn-primary" : "btn-secondary"}
-            style={{ flex: 1 }}
-            onClick={() => setSide("يمين")}
-          >
-            يمين
-          </button>
-          <button
-            type="button"
-            className={side === "يسار" ? "btn-primary" : "btn-secondary"}
-            style={{ flex: 1 }}
-            onClick={() => setSide("يسار")}
-          >
-            يسار
-          </button>
-        </div>
-      </div>
-
-      <div className="field">
-        <label>وصف الوصول (ملاحظة توضح المكان)</label>
-        <textarea rows={2} value={accessNotes} onChange={(e) => setAccessNotes(e.target.value)} />
-      </div>
-
-      <button className="btn-primary" style={{ marginBottom: 10 }} onClick={handleSave} disabled={saving}>
-        {saving ? "جاري الحفظ..." : "حفظ الموقع والعنوان"}
-      </button>
-      {hasSavedLocation && (
-        <button type="button" className="btn-secondary" onClick={() => setEditingLocation(false)}>إلغاء</button>
-      )}
-    </div>
-  );
-}
+      await
