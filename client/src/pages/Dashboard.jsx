@@ -1,10 +1,11 @@
 import { useNavigate } from "react-router-dom";
-import { FiUserPlus, FiBox } from "react-icons/fi";
+import { FiSearch, FiBox } from "react-icons/fi";
 
 const ROLE_LABELS = {
-  super_admin: "مدير١",
-  admin: "مدير٢",
+  super_admin: "مدير",
+  admin: "مساعد مدير",
   driver: "سائق توصيل",
+  data_entry: "موظف الإدخال",
 };
 
 export default function Dashboard({ user }) {
@@ -19,7 +20,7 @@ export default function Dashboard({ user }) {
       </p>
 
       <button className="btn-primary icon-row" style={{ justifyContent: "center", marginBottom: 12 }} onClick={() => navigate("/customers")}>
-        <FiUserPlus /> زبون جديد / بحث عن عميل
+        <FiSearch /> بحث عن عميل
       </button>
 
       {isPrivileged && (
