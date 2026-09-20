@@ -26,7 +26,7 @@ export default function Login({ onLoggedIn }) {
   return (
     <div className="centered-screen">
       <div style={{ width: "100%", maxWidth: 380 }}>
-        <h1 className="title-lg">مياه جوهرة</h1>
+        <h1 className="title-lg">مياه جوهرة الرابية</h1>
         <p className="text-secondary" style={{ marginBottom: 20 }}>تسجيل الدخول لنظام التوزيع</p>
 
         {error && <div className="error-box">{error}</div>}
@@ -44,6 +44,30 @@ export default function Login({ onLoggedIn }) {
             {loading ? "جاري الدخول..." : "تسجيل الدخول"}
           </button>
         </form>
+
+        <div
+          style={{
+            marginTop: 32,
+            paddingTop: 16,
+            borderTop: "1px solid #e2e8f0",
+            textAlign: "center",
+            fontSize: 12,
+            lineHeight: 1.9,
+            color: "#5b6470",
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#1f2933" }}>مياه جوهرة الرابية</div>
+          <div>سجل تجاري رقم 615796 | الرقم الوطني للمنشأة 101069662</div>
+          <div>الأردن، عمان، الرابية، شارع محمد ابوعزام، قرب مجمع ابو عزام التجاري</div>
+          <div>
+            هاتف:{" "}
+            <a href="tel:+962799805161" dir="ltr" style={{ color: "#0094FF", textDecoration: "none" }}>
+              +962 79 980 5161
+            </a>
+          </div>
+          <div style={{ marginTop: 6 }}>نشمي — إحدى خدمات مياه جوهرة الرابية</div>
+          <div style={{ marginTop: 6, color: "#8a94a3" }}>© 2026 مياه جوهرة الرابية. جميع الحقوق محفوظة.</div>
+        </div>
       </div>
     </div>
   );
